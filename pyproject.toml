@@ -1,0 +1,15 @@
+[tool.poetry]
+name = "web-explorer"
+version = "0.1.0"
+description = ""
+authors = ["KalenHsu <KalenHsu@going.cloud>"]
+readme = "README.md"
+packages = [{include = "web_explorer"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
