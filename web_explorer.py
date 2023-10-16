@@ -5,26 +5,28 @@ from langchain.retrievers.web_research import WebResearchRetriever
 from langchain.prompts import ChatMessagePromptTemplate, PromptTemplate
 
 from dotenv import load_dotenv
-
+from io import StringIO
+import logging
 import os
 
+# %%
 st.set_page_config(page_title="test search", page_icon="🌐")
 
-def settings():
 
+def settings():
     # Vectorstore
     import faiss
-    from langchain.vectorstores import FAISS 
+    from langchain.vectorstores import FAISS
     from langchain.embeddings.openai import OpenAIEmbeddings
-    from langchain.docstore import InMemoryDocstore  
-    embeddings_model = OpenAIEmbeddings(deployment=os.environ["OPENAI_EMBEDDING_ENGINE"])  
-    embedding_size = 1536  
-    index = faiss.IndexFlatL2(embedding_size)  
+    from langchain.docstore import InMemoryDocstore
+    embeddings_model = OpenAIEmbeddings(deployment=os.environ["OPENAI_EMBEDDING_ENGINE"])
+    embedding_size = 1536
+    index = faiss.IndexFlatL2(embedding_size)
     vectorstore_public = FAISS(embeddings_model.embed_query, index, InMemoryDocstore({}), {})
 
     # LLM
     from langchain.chat_models import AzureChatOpenAI
-    llm = AzureChatOpenAI(
+    openai_llm = AzureChatOpenAI(
         openai_api_base=os.environ["OPENAI_API_BASE"],
         openai_api_version=os.environ["OPENAI_API_VERSION"],
         deployment_name=os.environ["OPENAI_ENGINE"],
@@ -34,17 +36,18 @@ def settings():
 
     # Search
     from langchain.utilities import GoogleSearchAPIWrapper
-    search = GoogleSearchAPIWrapper()   
+    search = GoogleSearchAPIWrapper()
 
     # Initialize 
-    web_retriever = WebResearchRetriever.from_llm(
+    web_retriever_with_openai = WebResearchRetriever.from_llm(
         vectorstore=vectorstore_public,
-        llm=llm, 
-        search=search, 
-        num_search_results=10
+        llm=openai_llm,
+        search=search,
+        num_search_results=5
     )
 
-    return web_retriever, llm
+    return web_retriever_with_openai, openai_llm
+
 
 class StreamHandler(BaseCallbackHandler):
     def __init__(self, container, initial_text=""):
@@ -70,11 +73,27 @@ class PrintRetrievalHandler(BaseCallbackHandler):
             self.container.write(f"**Results from {source}**")
             self.container.text(doc.page_content)
 
+
+def get_generated_question(log_text):
+    import ast
+
+    io_text = str(log_text)
+    question_pattern = "INFO:langchain.retrievers.web_research:Questions for Google Search:"
+    io_text = io_text[io_text.rfind(question_pattern):]
+    generated_q_start = io_text.find("[")
+    generated_q_end = io_text.find("]")
+    generated_q = io_text[generated_q_start:generated_q_end + 1].replace("\\\n", "")
+    generated_q = "\n".join(ast.literal_eval(generated_q))
+
+    return generated_q
+
+
+# %%
 load_dotenv()
 
 # Make retriever and llm
-if 'retriever' not in st.session_state:
-    st.session_state['retriever'], st.session_state['llm'] = settings()
+if "retriever" not in st.session_state:
+    st.session_state["retriever"], st.session_state["llm"] = settings()
 web_retriever = st.session_state.retriever
 llm = st.session_state.llm
 
@@ -82,8 +101,6 @@ llm = st.session_state.llm
 question = st.text_input("`Ask a question:`")
 
 if question:
-
-
     prompt = """
     客戶詢問的問題是""" + question + """
 
@@ -91,23 +108,39 @@ if question:
 
     {summaries}
 
-    請使用中文回覆客戶
-"""
-
-    print(prompt)
-
+    使用中文回覆客戶，並翻譯成繁體中文
+    
+    If there is insufficient context, write the reason how you cannot answer. 
+    """
     chat_message_prompt = PromptTemplate(template=prompt, input_variables=["summaries"])
 
-    # Generate answer (w/ citations)
-    import logging
-    logging.basicConfig()
-    logging.getLogger("langchain.retrievers.web_research").setLevel(logging.INFO)    
-    qa_chain = RetrievalQAWithSourcesChain.from_chain_type(llm, retriever=web_retriever, chain_type_kwargs={"prompt": chat_message_prompt})
+    # Set up logging
+    main_handler = logging.StreamHandler()
+    main_handler.setLevel(logging.INFO)
+
+    log_stream = StringIO()
+    stream_handler = logging.StreamHandler(stream=log_stream)
+
+    logging.basicConfig(handlers=[main_handler, stream_handler])
+    logging.getLogger("langchain.retrievers.web_research").setLevel(logging.INFO)
+
+    qa_chain = RetrievalQAWithSourcesChain.from_chain_type(llm, retriever=web_retriever,
+                                                           chain_type_kwargs={"prompt": chat_message_prompt})
 
     # Write answer and sources
     retrieval_streamer_cb = PrintRetrievalHandler(st.container())
     answer = st.empty()
     stream_handler = StreamHandler(answer, initial_text="`Answer:`\n\n")
-    result = qa_chain({"question": f"{question} {os.environ['question']}"},callbacks=[retrieval_streamer_cb, stream_handler])
-    answer.info('`Answer:`\n\n' + result['answer'])
-    st.info('`Sources:`\n\n' + result['sources'])
+    result = qa_chain({"question": f"{question} {os.environ['question']}"},
+                      callbacks=[retrieval_streamer_cb, stream_handler])
+
+    answer.info("`Answer:`\n\n" + result["answer"])
+    print("\n\n\n\n\n", log_stream.getvalue(), "\n\n\n\n\n")
+    generated_question_by_llm = get_generated_question(log_text=log_stream.getvalue())
+    st.info("`Related Questions:`\n\n" + generated_question_by_llm)
+    # st.info("`Sources:`\n\n" + result["sources"])
+
+    log_stream.truncate(0)
+    log_stream.seek(0)
+    log_stream = StringIO()
+    # stream_handler.setStream(log_stream)
