@@ -8,6 +8,8 @@ from dotenv import load_dotenv
 from io import StringIO
 import logging
 import os
+import requests
+
 
 # %%
 st.set_page_config(page_title="test search", page_icon="🌐")
@@ -45,6 +47,10 @@ def settings():
         search=search,
         num_search_results=5
     )
+    # https://www.lawyerknow.com/success-case/
+    # https://www.howlawyer.com.tw/
+    # https://www.lawchain.tw/questions
+    # https://data.gov.tw/
 
     return web_retriever_with_openai, openai_llm
 
@@ -108,39 +114,40 @@ if question:
 
     {summaries}
 
-    使用中文回覆客戶，並翻譯成繁體中文
-    
-    If there is insufficient context, write the reason how you cannot answer. 
+    若查詢到的資料不足以回答，請說明無法回答的原因、並列舉建議之提問。
+    請參考上述問題及資料，使用繁體中文列點回覆客戶
     """
+    # If there is insufficient context, write the reason how you cannot answer. 並列舉建議之提問。
     chat_message_prompt = PromptTemplate(template=prompt, input_variables=["summaries"])
 
     # Set up logging
-    main_handler = logging.StreamHandler()
-    main_handler.setLevel(logging.INFO)
-
-    log_stream = StringIO()
-    stream_handler = logging.StreamHandler(stream=log_stream)
-
-    logging.basicConfig(handlers=[main_handler, stream_handler])
+    # main_handler = logging.StreamHandler()
+    # main_handler.setLevel(logging.INFO)
+    # log_stream = StringIO()
+    # stream_handler = logging.StreamHandler(stream=log_stream)
+    # logging.basicConfig(handlers=[main_handler, stream_handler])
+    logging.basicConfig()
     logging.getLogger("langchain.retrievers.web_research").setLevel(logging.INFO)
 
     qa_chain = RetrievalQAWithSourcesChain.from_chain_type(llm, retriever=web_retriever,
                                                            chain_type_kwargs={"prompt": chat_message_prompt})
 
     # Write answer and sources
-    retrieval_streamer_cb = PrintRetrievalHandler(st.container())
+    # retrieval_streamer_cb = PrintRetrievalHandler(st.container())
     answer = st.empty()
     stream_handler = StreamHandler(answer, initial_text="`Answer:`\n\n")
-    result = qa_chain({"question": f"{question} {os.environ['question']}"},
-                      callbacks=[retrieval_streamer_cb, stream_handler])
 
-    answer.info("`Answer:`\n\n" + result["answer"])
-    print("\n\n\n\n\n", log_stream.getvalue(), "\n\n\n\n\n")
-    generated_question_by_llm = get_generated_question(log_text=log_stream.getvalue())
-    st.info("`Related Questions:`\n\n" + generated_question_by_llm)
-    # st.info("`Sources:`\n\n" + result["sources"])
+    try:
+        result = qa_chain({"question": f"{question} {os.environ['question']}"}, callbacks=[stream_handler])
 
-    log_stream.truncate(0)
-    log_stream.seek(0)
-    log_stream = StringIO()
-    # stream_handler.setStream(log_stream)
+        answer.info("`Answer:`\n\n" + result["answer"])
+        # generated_question_by_llm = get_generated_question(log_text=log_stream.getvalue())
+        # st.info("`Related Questions:`\n\n" + generated_question_by_llm)
+
+    except requests.Timeout as timeErr:
+        answer.info("`警告訊息:`\n\n" + "非常抱歉，當前伺服器過於擁擠。\n請稍待一段時間、並重新整理頁面再做嘗試。")
+        print(timeErr)
+
+    except Exception as e:
+        answer.info("`警告訊息:`\n\n" + "非常抱歉，當前系統遭遇到問題。\n請稍待一段時間、並重新整理頁面再做嘗試。")
+        print(e)
