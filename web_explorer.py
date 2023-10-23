@@ -115,7 +115,7 @@ if question:
     {summaries}
 
     若查詢到的資料不足以回答，請說明無法回答的原因、並列舉建議之提問。
-    請參考上述問題及資料，使用繁體中文列點回覆客戶
+    請參考上述問題及資料，使用繁體中文、以列點的方式回覆客戶。
     """
     # If there is insufficient context, write the reason how you cannot answer. 並列舉建議之提問。
     chat_message_prompt = PromptTemplate(template=prompt, input_variables=["summaries"])
@@ -140,7 +140,7 @@ if question:
     try:
         result = qa_chain({"question": f"{question} {os.environ['question']}"}, callbacks=[stream_handler])
 
-        answer.info("`Answer:`\n\n" + result["answer"])
+        answer.info("`Answer:`\n\n" + result["answer"]+"\n\n以上資訊僅供參考，如有需要更精準資訊請諮詢專業律師。")
         # generated_question_by_llm = get_generated_question(log_text=log_stream.getvalue())
         # st.info("`Related Questions:`\n\n" + generated_question_by_llm)
 
