@@ -80,23 +80,9 @@ class PrintRetrievalHandler(BaseCallbackHandler):
             self.container.text(doc.page_content)
 
 
-def get_generated_question(log_text):
-    import ast
-
-    io_text = str(log_text)
-    question_pattern = "INFO:langchain.retrievers.web_research:Questions for Google Search:"
-    io_text = io_text[io_text.rfind(question_pattern):]
-    generated_q_start = io_text.find("[")
-    generated_q_end = io_text.find("]")
-    generated_q = io_text[generated_q_start:generated_q_end + 1].replace("\\\n", "")
-    generated_q = "\n".join(ast.literal_eval(generated_q))
-
-    return generated_q
-
-
-def query_with_button_value(example_value):
+def query_with_button_value(input_value, llm, web_retriever):
     output_prompt = """
-    客戶詢問的問題是「""" + example_value + """」
+    客戶詢問的問題是「""" + input_value + """」
 
     查詢到的資料是：
 
@@ -111,18 +97,17 @@ def query_with_button_value(example_value):
     logging.basicConfig()
     logging.getLogger("langchain.retrievers.web_research").setLevel(logging.INFO)
 
-    example_qa_chain = RetrievalQAWithSourcesChain.from_chain_type(llm, retriever=web_retriever,
+    qa_chain = RetrievalQAWithSourcesChain.from_chain_type(llm, retriever=web_retriever,
                                                            chain_type_kwargs={"prompt": output_prompt_template})
 
     # Write answer and sources
     output_answer = st.empty()
     placeholder = st.empty()
     placeholder.text("詢問中，請稍候...")
-    ex_stream_handler = StreamHandler(output_answer, initial_text="`Answer:`\n\n")
+    stream_handler = StreamHandler(output_answer, initial_text="`Answer:`\n\n")
 
     try:
-        result = example_qa_chain({"question": f"{example_value}？ {os.environ['question']}"},
-                                  callbacks=[ex_stream_handler])
+        result = qa_chain({"question": f"{input_value}？ {os.environ['question']}"}, callbacks=[stream_handler])
         placeholder.empty()
         output_answer.info("`回答:`\n\n" + result["answer"]+"\n\n以上資訊僅供參考，如有需要更精準資訊請諮詢專業律師。")
 
@@ -136,6 +121,8 @@ def query_with_button_value(example_value):
         output_answer.info("`警告訊息:`\n\n" + "非常抱歉，當前系統遭遇到問題。\n請稍待一段時間、並重新整理頁面再做嘗試。")
         print(e)
 
+    return True
+
 
 # %%
 load_dotenv()
@@ -143,72 +130,34 @@ load_dotenv()
 # Make retriever and llm
 if "retriever" not in st.session_state:
     st.session_state["retriever"], st.session_state["llm"] = settings()
-web_retriever = st.session_state.retriever
-llm = st.session_state.llm
+my_retriever = st.session_state.retriever
+my_llm = st.session_state.llm
 
 # User input
 st.title("國眾法律聊天機器人 PoC")
 st.header("PoC: Leosys Law Chatbot\n")
-question = st.text_input("`請輸入您的問題👇`")
-st.text("\n")
+init_status = 0
+input_text_container = st.empty()
+question = input_text_container.text_input("`請輸入您的問題👇`")
 example_question_1 = st.button("建議問題：幾月繳牌照稅？")
 example_question_2 = st.button("建議問題：酒駕罰多少？")
 example_question_3 = st.button("建議問題：網路購物可以退貨嗎？")
 
-
-if question:
-    prompt = """
-    客戶詢問的問題是""" + question + """
-
-    查詢到的資料是：
-
-    {summaries}
-
-    若查詢到的資料不足以回答，請說明無法回答的原因、並列舉建議之提問。
-    請參考上述問題及資料，使用繁體中文、以列點的方式回覆客戶。
-    """
-    chat_message_prompt = PromptTemplate(template=prompt, input_variables=["summaries"])
-
-    # Set up logging
-    # main_handler = logging.StreamHandler()
-    # main_handler.setLevel(logging.INFO)
-    # log_stream = StringIO()
-    # stream_handler = logging.StreamHandler(stream=log_stream)
-    # logging.basicConfig(handlers=[main_handler, stream_handler])
-    logging.basicConfig()
-    logging.getLogger("langchain.retrievers.web_research").setLevel(logging.INFO)
-
-    qa_chain = RetrievalQAWithSourcesChain.from_chain_type(llm, retriever=web_retriever,
-                                                           chain_type_kwargs={"prompt": chat_message_prompt})
-
-    # Write answer and sources
-    # retrieval_streamer_cb = PrintRetrievalHandler(st.container())
-    answer = st.empty()
-    stream_handler = StreamHandler(answer, initial_text="`Answer:`\n\n")
-
-    try:
-        result = qa_chain({"question": f"{question} {os.environ['question']}"}, callbacks=[stream_handler])
-
-        answer.info("`回答:`\n\n" + result["answer"]+"\n\n以上資訊僅供參考，如有需要更精準資訊請諮詢專業律師。")
-        # generated_question_by_llm = get_generated_question(log_text=log_stream.getvalue())
-        # st.info("`Related Questions:`\n\n" + generated_question_by_llm)
-
-    except requests.Timeout as timeErr:
-        answer.info("`警告訊息:`\n\n" + "非常抱歉，當前伺服器過於擁擠。\n請稍待一段時間、並重新整理頁面再做嘗試。")
-        print(timeErr)
-
-    except Exception as e:
-        answer.info("`警告訊息:`\n\n" + "非常抱歉，當前系統遭遇到問題。\n請稍待一段時間、並重新整理頁面再做嘗試。")
-        print(e)
-
-
 if example_question_1:
-    query_with_button_value("幾月繳牌照稅？")
-
+    input_text_container.text_input("`請輸入您的問題👇`", "幾月繳牌照稅？")
+    query_with_button_value("幾月繳牌照稅？", my_llm, my_retriever)
+    question = False
 
 if example_question_2:
-    query_with_button_value("酒駕罰多少？")
-
+    input_text_container.text_input("`請輸入您的問題👇`", "酒駕罰多少？")
+    query_with_button_value("酒駕罰多少？", my_llm, my_retriever)
+    question = False
 
 if example_question_3:
-    query_with_button_value("網路購物可以退貨嗎？")
+    input_text_container.text_input("`請輸入您的問題👇`", "網路購物可以退貨嗎？")
+    query_with_button_value("網路購物可以退貨嗎？", my_llm, my_retriever)
+    question = False
+
+if question and (question not in ["幾月繳牌照稅？", "酒駕罰多少？", "網路購物可以退貨嗎？"]):
+    query_with_button_value(question, my_llm, my_retriever)
+    question = False
