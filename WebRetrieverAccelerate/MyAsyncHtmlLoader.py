@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 import warnings
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, Iterator, List, Optional, Union, cast
@@ -72,31 +73,40 @@ class AsyncHtmlLoader(BaseLoader):
         self.raise_for_status = raise_for_status
 
     async def _fetch(
-            self, url: str, retries: int = 3, cooldown: int = 2, backoff: float = 1.5
+            self, url: str, retries: int = 2, cooldown: int = 2, backoff: float = 1.5
     ) -> str:
         async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(limit=150)) as session:
             for i in range(retries):
+                start_time = time.time()
                 try:
                     async with session.get(
-                            url,
-                            headers=self.session.headers,
-                            ssl=None if self.session.verify else False,
+                        url,
+                        headers=self.session.headers,
+                        ssl=None if self.session.verify else False,
+                        timeout=1
                     ) as response:
-                        try:
-                            text = await response.text()
-                        except UnicodeDecodeError:
-                            logger.error(f"Failed to decode content from {url}")
-                            text = ""
+                        if response.ok:
+                            try:
+                                text = await response.text()
+                            except UnicodeDecodeError:
+                                logger.error(f"Failed to decode content from {url}")
+                                text = ""
+
+                        print("####--- session.get in %s seconds ---" % (time.time() - start_time), url)
+
                         return text
+
                 except aiohttp.ClientConnectionError as e:
-                    if i == retries - 1:
-                        raise
-                    else:
-                        logger.warning(
-                            f"Error fetching {url} with attempt "
-                            f"{i + 1}/{retries}: {e}. Retrying..."
-                        )
-                        await asyncio.sleep(cooldown * backoff**i)
+                    logger.warning(
+                        f"Error fetching {url} with attempt "
+                        f"{i + 1}/{retries}: {e}. Retrying..."
+                    )
+                    await asyncio.sleep(1)
+                except asyncio.TimeoutError as e:
+                    await asyncio.sleep(1)
+                    return ""
+
+
         raise ValueError("retry count exceeded")
 
     async def _fetch_with_rate_limit(
@@ -129,10 +139,12 @@ class AsyncHtmlLoader(BaseLoader):
 
     def load(self) -> List[Document]:
         """Load text from the url(s) in web_path."""
+        start_time = time.time()
 
         try:
             # Raises RuntimeError if there is no current event loop.
             asyncio.get_running_loop()
+
             # If there is a current event loop, we need to run the async code
             # in a separate loop, in a separate thread.
             with ThreadPoolExecutor(max_workers=1) as executor:
@@ -141,8 +153,12 @@ class AsyncHtmlLoader(BaseLoader):
         except RuntimeError:
             results = asyncio.run(self.fetch_all(self.web_paths))
         docs = []
+        print("##--- ThreadPoolExecutor in %s seconds ---" % (time.time() - start_time))
+
+        start_time = time.time()
         for i, text in enumerate(cast(List[str], results)):
             metadata = {"source": self.web_paths[i]}
             docs.append(Document(page_content=text, metadata=metadata))
+        print("##--- enumerate in for loop in %s seconds ---" % (time.time() - start_time))
 
         return docs

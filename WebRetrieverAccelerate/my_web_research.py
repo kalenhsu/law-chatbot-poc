@@ -212,6 +212,9 @@ class WebResearchRetriever(BaseRetriever):
             logger.info("Indexing new urls...")
             start_time = time.time()
             docs = loader.load()
+            print("--- html loader in %s seconds ---" % (time.time() - start_time))
+
+            start_time = time.time()
             docs = list(html2text.transform_documents(docs))
             print("--- html2text in %s seconds ---" % (time.time() - start_time))
 
@@ -234,10 +237,12 @@ class WebResearchRetriever(BaseRetriever):
         print("--- similarity_search in %s seconds ---" % (time.time() - start_time))
 
         # Get unique docs
+        start_time = time.time()
         unique_documents_dict = {
             (doc.page_content, tuple(sorted(doc.metadata.items()))): doc for doc in docs
         }
         unique_documents = list(unique_documents_dict.values())
+        print("--- doc.metadata.items() in %s seconds ---" % (time.time() - start_time))
         return unique_documents
 
     async def _aget_relevant_documents(

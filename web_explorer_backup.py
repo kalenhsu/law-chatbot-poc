@@ -128,7 +128,7 @@ def query_with_button_value(input_value, llm, web_retriever, role):
 
 def query_with_button_value2(input_value, llm, web_retriever, role):
     output_prompt = \
-        f"現在你是一個{role['position']}的角色，會用{role['tone']}的口吻回答問題。\n" \
+        f"請扮演一個{role['position']}的角色，用{role['tone']}的口吻回答問題。\n" \
         + "當有用戶詢問的問題是「" + input_value + """  李彥秀使否對該議題有貢獻？」，
         
         且你查詢到的資料是：
