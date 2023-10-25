@@ -8,7 +8,7 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "^3.11"
 streamlit = "1.25.0"
-langchain = "0.0.244"
+langchain = "^0.0.321"
 chromadb = "0.4.3"
 openai = "0.27.8"
 html2text = "2020.1.16"

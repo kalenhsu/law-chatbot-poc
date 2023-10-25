@@ -1,8 +1,9 @@
 import streamlit as st
 from langchain.callbacks.base import BaseCallbackHandler
 from langchain.chains import RetrievalQAWithSourcesChain
-from langchain.retrievers.web_research import WebResearchRetriever
 from langchain.prompts import ChatMessagePromptTemplate, PromptTemplate
+
+from WebRetrieverAccelerate.my_web_research import WebResearchRetriever
 
 from dotenv import load_dotenv
 import json
