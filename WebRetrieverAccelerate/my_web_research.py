@@ -1,6 +1,7 @@
 import logging
 import re
 from typing import List, Optional
+import time
 
 # from langchain.document_loaders import AsyncHtmlLoader
 from WebRetrieverAccelerate.MyAsyncHtmlLoader import AsyncHtmlLoader
@@ -200,21 +201,37 @@ class WebResearchRetriever(BaseRetriever):
         logger.info(f"New URLs to load: {new_urls}")
         # Load, split, and add new urls to vectorstore
         if new_urls:
+            start_time = time.time()
             loader = AsyncHtmlLoader(new_urls)
+            print("--- AsyncHtmlLoader in %s seconds ---" % (time.time() - start_time))
+
+            start_time = time.time()
             html2text = Html2TextTransformer()
+            print("--- Html2TextTransformer in %s seconds ---" % (time.time() - start_time))
+
             logger.info("Indexing new urls...")
+            start_time = time.time()
             docs = loader.load()
             docs = list(html2text.transform_documents(docs))
+            print("--- html2text in %s seconds ---" % (time.time() - start_time))
+
+            start_time = time.time()
             docs = self.text_splitter.split_documents(docs)
+            print("--- text_splitter in %s seconds ---" % (time.time() - start_time))
+
+            start_time = time.time()
             self.vectorstore.add_documents(docs)
             self.url_database.extend(new_urls)
+            print("--- vectorstore add_documents in %s seconds ---" % (time.time() - start_time))
 
         # Search for relevant splits
         # TODO: make this async
         logger.info("Grabbing most relevant splits from urls...")
         docs = []
+        start_time = time.time()
         for query in questions:
             docs.extend(self.vectorstore.similarity_search(query))
+        print("--- similarity_search in %s seconds ---" % (time.time() - start_time))
 
         # Get unique docs
         unique_documents_dict = {

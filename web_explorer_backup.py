@@ -79,13 +79,13 @@ class PrintRetrievalHandler(BaseCallbackHandler):
 def query_with_button_value(input_value, llm, web_retriever, role):
     output_prompt = \
         f"現在你是一個{role['position']}的角色，會用{role['tone']}的口吻回答問題。\n" \
-        + "當有用戶詢問的問題是「" + input_value + """」，
+        + "當用戶詢問的問題是「" + input_value + """」，
         
         且你查詢到的資料是：
     
         {summaries}
     
-        請參考上述問題及資料，使用繁體中文、以列點的方式，用""" + role['tone'] + """的口吻回覆用戶。
+        請參考上述問題及資料，使用繁體中文、以列點的方式，用""" + role['tone'] + """的口吻回覆用戶的所有問題。
         若查詢到的資料不足以回答，請說明無法回答的原因、並列舉建議之提問。
         """
     output_prompt_template = PromptTemplate(template=output_prompt, input_variables=["summaries"])
