@@ -1,8 +1,10 @@
 import streamlit as st
 from langchain.callbacks.base import BaseCallbackHandler
 from langchain.chains import RetrievalQAWithSourcesChain
-from langchain.retrievers.web_research import WebResearchRetriever
 from langchain.prompts import ChatMessagePromptTemplate, PromptTemplate
+from langchain.schema import HumanMessage
+
+from WebRetrieverAccelerate.my_web_research import WebResearchRetriever
 
 from dotenv import load_dotenv
 import json
@@ -44,7 +46,7 @@ def settings():
         vectorstore=vectorstore_public,
         llm=openai_llm,
         search=search,
-        num_search_results=5
+        num_search_results=4
     )
 
     return web_retriever_with_openai, openai_llm
@@ -75,16 +77,19 @@ class PrintRetrievalHandler(BaseCallbackHandler):
             self.container.text(doc.page_content)
 
 
-def query_with_button_value(input_value, llm, web_retriever, role):
+def query_with_button_value(input_value, llm, web_retriever):
+    with open("role-setting.json") as j:
+        role_setting_info = json.load(j)
+
     output_prompt = \
-        f"現在你是一個{role['position']}的角色，會用{role['tone']}的口吻回答問題。\n" \
-        + "當有用戶詢問的問題是「" + input_value + """」，
+        f"請扮演一個台灣地區的{role_setting_info['服務角色']}的角色，會用{role_setting_info['服務口吻']}的口吻回答問題。\n" \
+        + "當用戶詢問的問題是「" + input_value + """」，
         
         且你查詢到的資料是：
     
         {summaries}
     
-        請參考上述問題及資料，使用繁體中文、以列點的方式，用""" + role['tone'] + """的口吻回覆用戶。
+        請參考上述問題及資料，使用繁體中文、以列點的方式，用""" + role_setting_info['服務口吻'] + """的口吻回覆用戶的所有問題。
         若查詢到的資料不足以回答，請說明無法回答的原因、並列舉建議之提問。
         """
     output_prompt_template = PromptTemplate(template=output_prompt, input_variables=["summaries"])
@@ -103,64 +108,32 @@ def query_with_button_value(input_value, llm, web_retriever, role):
     stream_handler = StreamHandler(output_answer, initial_text="`Answer:`\n\n")
 
     try:
-        with open("role-setting.json") as j:
-            disclaimer_info = json.load(j)
-        result = qa_chain({"question": f"{input_value}？ {os.environ['question']}"}, callbacks=[stream_handler])
+        result = qa_chain({"question": f"{input_value} {os.environ['question']}"}, callbacks=[stream_handler])
         placeholder.empty()
         output_answer.info("`回答:`\n\n" + result["answer"] \
-                           + f"\n\n以上資訊僅供參考，如有需要更精準資訊請諮詢專業律師或{disclaimer_info['服務單位']}服務團隊。" \
-                           + f"\n\n{disclaimer_info['服務單位']}電話：{disclaimer_info['服務電話']}" \
-                           + f"\n\n{disclaimer_info['服務單位']}官網：{disclaimer_info['服務官網']}")
+                           + f"\n\n以上資訊僅供參考，如有需要更精準資訊請諮詢專業律師或{role_setting_info['服務單位']}服務團隊。" \
+                           + f"\n\n{role_setting_info['服務單位']}電話：{role_setting_info['服務電話']}" \
+                           + f"\n\n{role_setting_info['服務單位']}官網：{role_setting_info['服務官網']}")
 
-    except requests.Timeout as timeErr:
-        placeholder.empty()
-        output_answer.info("`警告訊息:`\n\n" + "非常抱歉，當前伺服器過於擁擠。\n請稍待一段時間、並重新整理頁面再做嘗試。")
-        print(timeErr)
-
-    except Exception as e:
-        placeholder.empty()
-        output_answer.info("`警告訊息:`\n\n" + "非常抱歉，當前系統遭遇到問題。\n請稍待一段時間、並重新整理頁面再做嘗試。")
-        print(e)
-
-    return True
-
-
-def query_with_button_value2(input_value, llm, web_retriever, role):
-    output_prompt = \
-        f"現在你是一個{role['position']}的角色，會用{role['tone']}的口吻回答問題。\n" \
-        + "當有用戶詢問的問題是「" + input_value + """  李彥秀使否對該議題有貢獻？」，
+        with open("politcs.json") as j:
+            politics = json.load(j)
+        n_politics = str(len(politics.keys()))
+        politics = "\n\n".join([
+            title+"：\n"+str(politics[title]).replace("', '", "\n")[2:-2] for title in politics.keys()
+        ])
+        politics_prompt = f"{politics}\n\n請問以上{n_politics}"+"""點政見，何者跟「{question}」最有關聯？
         
-        且你查詢到的資料是：
-    
-        {summaries}
-    
-        請參考上述問題及資料，使用繁體中文、以列點的方式，用""" + role['tone'] + """的口吻回覆用戶。
-        若查詢到的資料不足以回答，請說明無法回答的原因、並列舉建議之提問。
-        """
-    output_prompt_template = PromptTemplate(template=output_prompt, input_variables=["summaries"])
-
-    # Set up logging
-    logging.basicConfig()
-    logging.getLogger("langchain.retrievers.web_research").setLevel(logging.INFO)
-
-    qa_chain = RetrievalQAWithSourcesChain.from_chain_type(llm, retriever=web_retriever,
-                                                           chain_type_kwargs={"prompt": output_prompt_template})
-
-    # Write answer and sources
-    output_answer = st.empty()
-    placeholder = st.empty()
-    placeholder.text("詢問中，請稍候...")
-    stream_handler = StreamHandler(output_answer, initial_text="`Answer:`\n\n")
-
-    try:
-        with open("role-setting.json") as j:
-            disclaimer_info = json.load(j)
-        result = qa_chain({"question": f"{input_value} 李彥秀的貢獻為何？"}, callbacks=[stream_handler])
-        placeholder.empty()
-        output_answer.info("`回答:`\n\n" + result["answer"] \
-                           + f"\n\n以上資訊僅供參考，如有需要更精準資訊請諮詢專業律師或{disclaimer_info['服務單位']}服務團隊。" \
-                           + f"\n\n{disclaimer_info['服務單位']}電話：{disclaimer_info['服務電話']}" \
-                           + f"\n\n{disclaimer_info['服務單位']}官網：{disclaimer_info['服務官網']}")
+        請在第一行加上「有關聯」三個字、並在第二行將最有關的政見印出，並在第三行解釋兩者之間如何關聯。
+        若全部都無關的話在第一行加上「無關聯」三個字。
+        """.format(question=input_value)
+        politics_msg = HumanMessage(content=politics_prompt)
+        politics_result = my_llm(messages=[politics_msg]).to_json()["kwargs"]["content"]
+        print(politics_result)
+        if politics_result[:3] == "有關聯":
+            politics_result = politics_result[3:].replace('\n', '\n\n')
+            st.info('`Note:`\n\n' \
+                    + f"以上提問「{input_value}」與{role_setting_info['服務單位']}之政見有關聯。\n" \
+                    + f"\n\n{role_setting_info['服務單位']}曾經提出：{politics_result}")
 
     except requests.Timeout as timeErr:
         placeholder.empty()
@@ -171,6 +144,8 @@ def query_with_button_value2(input_value, llm, web_retriever, role):
         placeholder.empty()
         output_answer.info("`警告訊息:`\n\n" + "非常抱歉，當前系統遭遇到問題。\n請稍待一段時間、並重新整理頁面再做嘗試。")
         print(e)
+
+    print("Done. \n\n")
 
     return True
 
@@ -187,11 +162,6 @@ my_llm = st.session_state.llm
 # User input
 st.title("國眾法律聊天機器人")
 st.header("Leosys Law Chatbot\n")
-option_role = {
-    "position": st.selectbox("請選擇您期望的服務角色", ("專業律師", "立法委員", "高級工程師")),
-    "tone": st.selectbox("請選擇您期望的服務口吻", ("和藹親切", "專業冷酷", "熱情開放"))
-}
-init_status = 0
 input_text_container = st.empty()
 question = input_text_container.text_input("`請輸入您的問題👇`")
 example_question_1 = st.button("建議問題：幾月繳牌照稅？")
@@ -200,19 +170,19 @@ example_question_3 = st.button("建議問題：網路購物可以退貨嗎？")
 
 if example_question_1:
     input_text_container.text_input("`請輸入您的問題👇`", "幾月繳牌照稅？")
-    query_with_button_value("幾月繳牌照稅？", my_llm, my_retriever, option_role)
+    query_with_button_value("幾月繳牌照稅？", my_llm, my_retriever)
     question = False
 
 if example_question_2:
     input_text_container.text_input("`請輸入您的問題👇`", "酒駕罰多少？")
-    query_with_button_value("酒駕罰多少？", my_llm, my_retriever, option_role)
+    query_with_button_value("酒駕罰多少？", my_llm, my_retriever)
     question = False
 
 if example_question_3:
     input_text_container.text_input("`請輸入您的問題👇`", "網路購物可以退貨嗎？")
-    query_with_button_value("網路購物可以退貨嗎？", my_llm, my_retriever, option_role)
+    query_with_button_value("網路購物可以退貨嗎？", my_llm, my_retriever)
     question = False
 
 if question and (question not in ["幾月繳牌照稅？", "酒駕罰多少？", "網路購物可以退貨嗎？"]):
-    query_with_button_value(question, my_llm, my_retriever, option_role)
+    query_with_button_value(question, my_llm, my_retriever)
     question = False

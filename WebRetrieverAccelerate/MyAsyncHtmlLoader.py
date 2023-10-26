@@ -83,7 +83,7 @@ class AsyncHtmlLoader(BaseLoader):
                         url,
                         headers=self.session.headers,
                         ssl=None if self.session.verify else False,
-                        timeout=1
+                        timeout=1.5
                     ) as response:
                         if response.ok:
                             try:
@@ -105,7 +105,6 @@ class AsyncHtmlLoader(BaseLoader):
                 except asyncio.TimeoutError as e:
                     await asyncio.sleep(1)
                     return ""
-
 
         raise ValueError("retry count exceeded")
 

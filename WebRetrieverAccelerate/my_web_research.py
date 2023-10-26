@@ -36,18 +36,15 @@ class SearchQueries(BaseModel):
 
 DEFAULT_LLAMA_SEARCH_PROMPT = PromptTemplate(
     input_variables=["question"],
-    template="""<<SYS>> \n You are an assistant tasked with improving Google search \
-results. \n <</SYS>> \n\n [INST] Generate THREE Google search queries that \
-are similar to this question. The output should be a numbered list of questions \
-and each should have a question mark at the end: \n\n {question} [/INST]""",
+    template="""<<SYS>> \n 你現在是一個助理，你的職責是改善Google搜尋結果。 \
+\n <</SYS>> \n\n [INST] 請以numbered list of questions的型式，產出三個與下列問題相似的Google搜尋查詢，並在每一個問題最後加上問號： \
+\n\n {question} [/INST]""",
 )
 
 DEFAULT_SEARCH_PROMPT = PromptTemplate(
     input_variables=["question"],
-    template="""You are an assistant tasked with improving Google search \
-results. Generate THREE Google search queries that are similar to \
-this question. The output should be a numbered list of questions and each \
-should have a question mark at the end: {question}""",
+    template="""你現在是一個助理，你的職責是改善Google搜尋結果。 \
+請以numbered list of questions的型式，產出三個與下列問題相似的Google搜尋查詢，並在每一個問題最後加上問號： {question}""",
 )
 
 
@@ -146,7 +143,7 @@ class WebResearchRetriever(BaseRetriever):
             first_quote_pos = query.find('"')
             if first_quote_pos != -1:
                 # Extract the part of the string after the quote
-                query = query[first_quote_pos + 1 :]
+                query = query[first_quote_pos + 1:]
                 # Remove the trailing quote if present
                 if query.endswith('"'):
                     query = query[:-1]
@@ -176,9 +173,11 @@ class WebResearchRetriever(BaseRetriever):
         # Get search questions
         logger.info("Generating questions for Google Search ...")
         result = self.llm_chain({"question": query})
+        print("\nOriginal Question: ", query)
         logger.info(f"Questions for Google Search (raw): {result}")
         questions = getattr(result["text"], "lines", [])
         logger.info(f"Questions for Google Search: {questions}")
+        print("Generated Questions: ", questions, "\n")
 
         # Get urls
         logger.info("Searching for relevant urls...")
