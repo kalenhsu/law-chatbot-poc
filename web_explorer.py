@@ -1,7 +1,7 @@
 import streamlit as st
 from langchain.callbacks.base import BaseCallbackHandler
 from langchain.chains import RetrievalQAWithSourcesChain
-from langchain.prompts import ChatMessagePromptTemplate, PromptTemplate
+from langchain.prompts import PromptTemplate
 from langchain.schema import HumanMessage
 
 from WebRetrieverAccelerate.my_web_research import WebResearchRetriever
@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import requests
+import time
 
 # %%
 st.set_page_config(page_title="test search", page_icon="🌐")
@@ -35,6 +36,7 @@ def settings():
         deployment_name=os.environ["OPENAI_ENGINE"],
         openai_api_key=os.environ["OPENAI_API_KEY"],
         openai_api_type=os.environ["OPENAI_API_TYPE"],
+        streaming=True,
     )
 
     # Search
@@ -77,7 +79,26 @@ class PrintRetrievalHandler(BaseCallbackHandler):
             self.container.text(doc.page_content)
 
 
+def check_similar_politics(politics_doc, input_q, llm):
+    with open(politics_doc) as j:
+        politics = json.load(j)
+    n_politics = str(len(politics.keys()))
+    politics = "\n\n".join([
+        title+"：\n"+str(politics[title]).replace("', '", "\n")[2:-2] for title in politics.keys()
+    ])
+    politics_prompt = f"{politics}\n\n請問以上{n_politics}"+"""點政見，何者跟「{question}」最有關聯？
+            
+            請在第一行加上「有關聯」三個字、並在第二行將最有關的政見印出，並在第三行解釋兩者之間如何關聯。
+            若全部都無關的話在第一行加上「無關聯」三個字。
+            """.format(question=input_q)
+    politics_msg = HumanMessage(content=politics_prompt)
+    result = llm(messages=[politics_msg]).to_json()["kwargs"]["content"]
+
+    return result
+
+
 def query_with_button_value(input_value, llm, web_retriever):
+    ttl_start_time = time.time()
     with open("role-setting.json") as j:
         role_setting_info = json.load(j)
 
@@ -108,32 +129,22 @@ def query_with_button_value(input_value, llm, web_retriever):
     stream_handler = StreamHandler(output_answer, initial_text="`Answer:`\n\n")
 
     try:
-        result = qa_chain({"question": f"{input_value} {os.environ['question']}"}, callbacks=[stream_handler])
-        placeholder.empty()
+        result = qa_chain({"question": f"{input_value} {os.environ['question']}"},
+                          callbacks=[stream_handler])
         output_answer.info("`回答:`\n\n" + result["answer"] \
                            + f"\n\n以上資訊僅供參考，如有需要更精準資訊請諮詢專業律師或{role_setting_info['服務單位']}服務團隊。" \
                            + f"\n\n{role_setting_info['服務單位']}電話：{role_setting_info['服務電話']}" \
                            + f"\n\n{role_setting_info['服務單位']}官網：{role_setting_info['服務官網']}")
+        print("--- Basic Answering in %s seconds ---" % (time.time() - ttl_start_time))
 
-        with open("politcs.json") as j:
-            politics = json.load(j)
-        n_politics = str(len(politics.keys()))
-        politics = "\n\n".join([
-            title+"：\n"+str(politics[title]).replace("', '", "\n")[2:-2] for title in politics.keys()
-        ])
-        politics_prompt = f"{politics}\n\n請問以上{n_politics}"+"""點政見，何者跟「{question}」最有關聯？
-        
-        請在第一行加上「有關聯」三個字、並在第二行將最有關的政見印出，並在第三行解釋兩者之間如何關聯。
-        若全部都無關的話在第一行加上「無關聯」三個字。
-        """.format(question=input_value)
-        politics_msg = HumanMessage(content=politics_prompt)
-        politics_result = my_llm(messages=[politics_msg]).to_json()["kwargs"]["content"]
-        print(politics_result)
+        politics_result = check_similar_politics(politics_doc="politics.json", input_q=input_value, llm=llm)
+        print("check_similar_politics: ", politics_result)
         if politics_result[:3] == "有關聯":
             politics_result = politics_result[3:].replace('\n', '\n\n')
             st.info('`Note:`\n\n' \
                     + f"以上提問「{input_value}」與{role_setting_info['服務單位']}之政見有關聯。\n" \
                     + f"\n\n{role_setting_info['服務單位']}曾經提出：{politics_result}")
+        placeholder.empty()
 
     except requests.Timeout as timeErr:
         placeholder.empty()
@@ -145,6 +156,7 @@ def query_with_button_value(input_value, llm, web_retriever):
         output_answer.info("`警告訊息:`\n\n" + "非常抱歉，當前系統遭遇到問題。\n請稍待一段時間、並重新整理頁面再做嘗試。")
         print(e)
 
+    print("--- Total Running in %s seconds ---" % (time.time() - ttl_start_time))
     print("Done. \n\n")
 
     return True
@@ -164,13 +176,13 @@ st.title("國眾法律聊天機器人")
 st.header("Leosys Law Chatbot\n")
 input_text_container = st.empty()
 question = input_text_container.text_input("`請輸入您的問題👇`")
-example_question_1 = st.button("建議問題：幾月繳牌照稅？")
+example_question_1 = st.button("建議問題：幾月繳汽機車牌照稅？")
 example_question_2 = st.button("建議問題：酒駕罰多少？")
 example_question_3 = st.button("建議問題：網路購物可以退貨嗎？")
 
 if example_question_1:
-    input_text_container.text_input("`請輸入您的問題👇`", "幾月繳牌照稅？")
-    query_with_button_value("幾月繳牌照稅？", my_llm, my_retriever)
+    input_text_container.text_input("`請輸入您的問題👇`", "幾月繳汽機車牌照稅？")
+    query_with_button_value("幾月繳汽機車牌照稅？", my_llm, my_retriever)
     question = False
 
 if example_question_2:
@@ -183,6 +195,6 @@ if example_question_3:
     query_with_button_value("網路購物可以退貨嗎？", my_llm, my_retriever)
     question = False
 
-if question and (question not in ["幾月繳牌照稅？", "酒駕罰多少？", "網路購物可以退貨嗎？"]):
+if question and (question not in ["幾月繳汽機車牌照稅？", "酒駕罰多少？", "網路購物可以退貨嗎？"]):
     query_with_button_value(question, my_llm, my_retriever)
     question = False

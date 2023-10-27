@@ -2,9 +2,11 @@ import logging
 import re
 from typing import List, Optional
 import time
+import os
 
 # from langchain.document_loaders import AsyncHtmlLoader
 from WebRetrieverAccelerate.MyAsyncHtmlLoader import AsyncHtmlLoader
+from langchain.embeddings.openai import OpenAIEmbeddings
 
 from langchain.callbacks.manager import (
     AsyncCallbackManagerForRetrieverRun,
@@ -222,9 +224,16 @@ class WebResearchRetriever(BaseRetriever):
             print("--- text_splitter in %s seconds ---" % (time.time() - start_time))
 
             start_time = time.time()
-            self.vectorstore.add_documents(docs)
+            # self.vectorstore.add_documents(docs)
+            texts = [doc.page_content for doc in docs]
+            metadatas = [doc.metadata for doc in docs]
+            embeddings = OpenAIEmbeddings(deployment=os.environ["OPENAI_EMBEDDING_ENGINE"]).embed_documents([doc.page_content for doc in docs])
+            self.vectorstore._FAISS__add(texts, embeddings, metadatas)
+            print("--- vectorstore.add_documents in %s seconds ---" % (time.time() - start_time))
+
+            start_time = time.time()
             self.url_database.extend(new_urls)
-            print("--- vectorstore add_documents in %s seconds ---" % (time.time() - start_time))
+            print("--- url_database.extend in %s seconds ---" % (time.time() - start_time))
 
         # Search for relevant splits
         # TODO: make this async
