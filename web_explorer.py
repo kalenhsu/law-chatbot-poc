@@ -88,7 +88,7 @@ def check_similar_politics(politics_doc, input_q, llm):
     ])
     politics_prompt = f"{politics}\n\n請問以上{n_politics}"+"""點政見，何者跟「{question}」最有關聯？
             
-            請在第一行加上「有關聯」三個字、並在第二行將最有關的政見印出，並在第三行解釋兩者之間如何關聯。
+            請在第一行加上「有關聯」三個字、並在第二行將最有關的政見印出，並在第三行以一百五十字以內解釋兩者之間如何關聯。
             若全部都無關的話在第一行加上「無關聯」三個字。
             """.format(question=input_q)
     politics_msg = HumanMessage(content=politics_prompt)
@@ -110,7 +110,7 @@ def query_with_button_value(input_value, llm, web_retriever):
     
         {summaries}
     
-        請參考上述問題及資料，使用繁體中文、以列點的方式，用""" + role_setting_info['服務口吻'] + """的口吻回覆用戶的所有問題。
+        請參考上述問題及資料，於四百字以內、使用繁體中文、以列點的方式，用""" + role_setting_info['服務口吻'] + """的口吻回覆用戶的所有問題。
         若查詢到的資料不足以回答，請說明無法回答的原因、並列舉建議之提問。
         """
     output_prompt_template = PromptTemplate(template=output_prompt, input_variables=["summaries"])
@@ -162,7 +162,7 @@ def query_with_button_value(input_value, llm, web_retriever):
     return True
 
 
-# %%
+# %% Streamlit Run
 load_dotenv()
 
 # Make retriever and llm
