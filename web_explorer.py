@@ -88,7 +88,7 @@ def check_similar_politics(politics_doc, input_q, llm):
     ])
     politics_prompt = f"{politics}\n\n請問以上{n_politics}"+"""點政見，何者跟「{question}」最有關聯？
             
-            請在第一行加上「有關聯」三個字、並在第二行將最有關的政見印出，並在第三行以一百五十字以內解釋兩者之間如何關聯。
+            請在第一行加上「有關聯」三個字、並在第二行將最有關的政見印出，並在第三行以內解釋兩者之間如何關聯，不要超過200字。
             若全部都無關的話在第一行加上「無關聯」三個字。
             """.format(question=input_q)
     politics_msg = HumanMessage(content=politics_prompt)
@@ -100,17 +100,17 @@ def check_similar_politics(politics_doc, input_q, llm):
 def query_with_button_value(input_value, llm, web_retriever):
     ttl_start_time = time.time()
     with open("role-setting.json") as j:
-        role_setting_info = json.load(j)
+        role_setting = json.load(j)
 
     output_prompt = \
-        f"請扮演一個台灣地區的{role_setting_info['服務角色']}的角色，會用{role_setting_info['服務口吻']}的口吻回答問題。\n" \
+        f"請扮演一個台灣地區的{role_setting['服務角色']}的角色，會用{role_setting['服務口吻']}的口吻回答問題。\n" \
         + "當用戶詢問的問題是「" + input_value + """」，
         
         且你查詢到的資料是：
     
         {summaries}
     
-        請參考上述問題及資料，於四百字以內、使用繁體中文、以列點的方式，用""" + role_setting_info['服務口吻'] + """的口吻回覆用戶的所有問題。
+        請參考上述問題及資料，使用繁體中文、以列點的方式，用""" + role_setting['服務口吻'] + """的口吻回覆用戶的所有問題，不要超過500字。
         若查詢到的資料不足以回答，請說明無法回答的原因、並列舉建議之提問。
         """
     output_prompt_template = PromptTemplate(template=output_prompt, input_variables=["summaries"])
@@ -132,9 +132,9 @@ def query_with_button_value(input_value, llm, web_retriever):
         result = qa_chain({"question": f"{input_value} {os.environ['question']}"},
                           callbacks=[stream_handler])
         output_answer.info("`回答:`\n\n" + result["answer"] \
-                           + f"\n\n以上資訊僅供參考，如有需要更精準資訊請諮詢專業律師或{role_setting_info['服務單位']}服務團隊。" \
-                           + f"\n\n{role_setting_info['服務單位']}電話：{role_setting_info['服務電話']}" \
-                           + f"\n\n{role_setting_info['服務單位']}官網：{role_setting_info['服務官網']}")
+                           + f"\n\n以上資訊僅供參考，如有需要更精準資訊請諮詢專業律師或{role_setting['服務單位']}服務團隊。" \
+                           + f"\n\n{role_setting['服務單位']}電話：{role_setting['服務電話']}" \
+                           + f"\n\n{role_setting['服務單位']}官網：{role_setting['服務官網']}")
         print("--- Basic Answering in %s seconds ---" % (time.time() - ttl_start_time))
 
         politics_result = check_similar_politics(politics_doc="politics.json", input_q=input_value, llm=llm)
@@ -142,8 +142,8 @@ def query_with_button_value(input_value, llm, web_retriever):
         if politics_result[:3] == "有關聯":
             politics_result = politics_result[3:].replace('\n', '\n\n')
             st.info('`Note:`\n\n' \
-                    + f"以上提問「{input_value}」與{role_setting_info['服務單位']}之政見有關聯。\n" \
-                    + f"\n\n{role_setting_info['服務單位']}曾經提出：{politics_result}")
+                    + f"以上提問「{input_value}」與{role_setting['服務單位']}之政見有關聯。\n" \
+                    + f"\n\n{role_setting['服務單位']}曾經提出：{politics_result}")
         placeholder.empty()
 
     except requests.Timeout as timeErr:
